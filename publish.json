@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "type": "container",
+  "containerfile": "Containerfile",
+  "http": {
+    "enabled": true,
+    "internal_port": 8080,
+    "health_path": "/",
+    "strip_prefix": true
+  },
+  "network": true,
+  "read_only": true,
+  "persistent_data": {
+    "enabled": false,
+    "mount_path": "/data"
+  },
+  "resources": {
+    "memory_mb": 512,
+    "cpus": 1,
+    "pids": 256
+  },
+  "environment": {}
+}

@@ -4,6 +4,17 @@ const { DatabaseSync } = require('node:sqlite');
 const databasePath = process.env.SQLITE_PATH ?? path.join(__dirname, 'boris.sqlite');
 const database = new DatabaseSync(databasePath);
 
+const WALK_SLOT_TIMES = ['09:00', '11:00', '13:00', '15:00', '17:00'];
+
+function getCurrentLocalDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 database.exec(`
   CREATE TABLE IF NOT EXISTS walk_slots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,4 +37,39 @@ database.exec(`
   );
 `);
 
-module.exports = { database, databasePath };
+const insertWalkSlot = database.prepare(`
+  INSERT OR IGNORE INTO walk_slots (walk_date, slot_time, booked_by, booked_at)
+  VALUES (?, ?, NULL, NULL)
+`);
+const currentDate = getCurrentLocalDate();
+
+database.exec('BEGIN');
+
+try {
+  for (const slotTime of WALK_SLOT_TIMES) {
+    insertWalkSlot.run(currentDate, slotTime);
+  }
+
+  database.exec('COMMIT');
+} catch (error) {
+  database.exec('ROLLBACK');
+  throw error;
+}
+
+const selectWalkSlotsByDate = database.prepare(`
+  SELECT id, walk_date, slot_time, booked_by, booked_at
+  FROM walk_slots
+  WHERE walk_date = ?
+  ORDER BY slot_time
+`);
+
+function getWalkSlotsForDate(walkDate) {
+  return selectWalkSlotsByDate.all(walkDate);
+}
+
+module.exports = {
+  currentDate,
+  database,
+  databasePath,
+  getWalkSlotsForDate,
+};

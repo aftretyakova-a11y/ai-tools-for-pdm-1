@@ -11,13 +11,16 @@
   "network": true,
   "read_only": true,
   "persistent_data": {
-    "enabled": false,
-    "mount_path": "/data"
+    "enabled": true,
+    "mount_path": "/data",
+    "quota_mb": 512
   },
   "resources": {
     "memory_mb": 512,
     "cpus": 1,
     "pids": 256
   },
-  "environment": {}
+  "environment": {
+    "SQLITE_PATH": "/data/boris.sqlite"
+  }
 }

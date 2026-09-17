@@ -18,11 +18,20 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => characters[character]);
 }
 
-function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }) {
+function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }, formError) {
   const safeSlotTime = escapeHtml(slotTime);
 
   if (bookedBy === null) {
     const inputId = `employee-name-${safeSlotTime.replace(':', '-')}`;
+    const errorId = `${inputId}-error`;
+    const hasError = formError?.slotTime === slotTime;
+    const inputValue = hasError ? escapeHtml(formError.employeeName) : '';
+    const errorAttributes = hasError
+      ? ` value="${inputValue}" aria-invalid="true" aria-describedby="${errorId}"`
+      : '';
+    const errorMessage = hasError
+      ? `<p class="slot__error" id="${errorId}" role="alert">${escapeHtml(formError.message)}</p>`
+      : '';
 
     return `<li class="slot slot--free">
             <time class="slot__time" datetime="${safeSlotTime}">${safeSlotTime}</time>
@@ -30,9 +39,10 @@ function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }) {
               <input type="hidden" name="slotTime" value="${safeSlotTime}">
               <label class="slot__label" for="${inputId}">ФИО сотрудника</label>
               <div class="slot__fields">
-                <input id="${inputId}" name="employeeName" type="text" maxlength="120" required autocomplete="name">
+                <input id="${inputId}" name="employeeName" type="text" maxlength="120" required autocomplete="name"${errorAttributes}>
                 <button type="submit">Записаться</button>
               </div>
+              ${errorMessage}
             </form>
             <span class="slot__status">Свободен</span>
           </li>`;
@@ -45,14 +55,16 @@ function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }) {
           </li>`;
 }
 
-function renderPage(walkDate, walkSlots) {
+function renderPage(walkDate, walkSlots, formError = null) {
   const formattedDate = new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     timeZone: 'Europe/Moscow',
   }).format(new Date(`${walkDate}T12:00:00+03:00`));
-  const slotItems = walkSlots.map(renderWalkSlot).join('\n          ');
+  const slotItems = walkSlots
+    .map((walkSlot) => renderWalkSlot(walkSlot, formError))
+    .join('\n          ');
 
   return `<!doctype html>
 <html lang="ru">
@@ -150,6 +162,13 @@ function renderPage(walkDate, walkSlots) {
         cursor: pointer;
       }
 
+      .slot__error {
+        margin: 0;
+        color: #8b241c;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
       .slot__status {
         padding: 4px 10px;
         border-radius: 999px;
@@ -187,6 +206,11 @@ function sendText(response, statusCode, message) {
   response.end(message);
 }
 
+function sendPage(response, statusCode, walkSlots, formError = null) {
+  response.writeHead(statusCode, { 'Content-Type': 'text/html; charset=utf-8' });
+  response.end(renderPage(currentDate, walkSlots, formError));
+}
+
 async function readForm(request) {
   let body = '';
   request.setEncoding('utf8');
@@ -206,8 +230,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/') {
     const walkSlots = getWalkSlotsForDate(currentDate);
 
-    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    response.end(renderPage(currentDate, walkSlots));
+    sendPage(response, 200, walkSlots);
     return;
   }
 
@@ -222,12 +245,22 @@ const server = http.createServer(async (request, response) => {
     try {
       const form = await readForm(request);
       const slotTime = form.get('slotTime') ?? '';
-      const employeeName = (form.get('employeeName') ?? '').trim();
+      const enteredEmployeeName = form.get('employeeName') ?? '';
+      const employeeName = enteredEmployeeName.trim();
       const walkSlots = getWalkSlotsForDate(currentDate);
       const slotExists = walkSlots.some(({ slot_time: time }) => time === slotTime);
 
-      if (!employeeName || employeeName.length > 120 || !slotExists) {
-        sendText(response, 400, 'Укажите непустое ФИО и выберите доступный слот');
+      if (!slotExists) {
+        sendText(response, 400, 'Выберите доступный слот');
+        return;
+      }
+
+      if (!employeeName || employeeName.length > 120) {
+        sendPage(response, 400, walkSlots, {
+          employeeName: enteredEmployeeName,
+          message: 'Введите непустое ФИО',
+          slotTime,
+        });
         return;
       }
 

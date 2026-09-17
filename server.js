@@ -1,6 +1,12 @@
 const http = require('node:http');
 
-const { bookWalkSlot, currentDate, getWalkSlotsForDate } = require('./database');
+const {
+  addFeeding,
+  bookWalkSlot,
+  currentDate,
+  getLatestFeeding,
+  getWalkSlotsForDate,
+} = require('./database');
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const host = process.env.HOST ?? '127.0.0.1';
@@ -55,7 +61,52 @@ function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }, formError)
           </li>`;
 }
 
-function renderPage(walkDate, walkSlots, formError = null, pageMessage = null) {
+function renderFeedingCard(lastFeeding, formError) {
+  const inputId = 'feeding-employee-name';
+  const errorId = `${inputId}-error`;
+  const hasError = formError !== null;
+  const inputValue = hasError ? escapeHtml(formError.employeeName) : '';
+  const errorAttributes = hasError
+    ? ` value="${inputValue}" aria-invalid="true" aria-describedby="${errorId}"`
+    : '';
+  const errorMessage = hasError
+    ? `<p class="feeding-card__error" id="${errorId}" role="alert">${escapeHtml(formError.message)}</p>`
+    : '';
+  let feedingState = '<p class="feeding-card__state">Кормление пока не отмечали.</p>';
+
+  if (lastFeeding !== null) {
+    const formattedFeedingTime = new Intl.DateTimeFormat('ru-RU', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Europe/Moscow',
+    }).format(new Date(lastFeeding.fed_at));
+
+    feedingState = `<p class="feeding-card__state">Последним отметил: <strong>${escapeHtml(lastFeeding.employee_name)}</strong></p>
+        <p class="feeding-card__time">Время: <time datetime="${escapeHtml(lastFeeding.fed_at)}">${escapeHtml(formattedFeedingTime)}</time></p>`;
+  }
+
+  return `<section class="feeding-card" aria-labelledby="feeding-title">
+        <h2 id="feeding-title">Последнее кормление</h2>
+        ${feedingState}
+        <form class="feeding-card__form" method="post" action="feedings">
+          <label class="feeding-card__label" for="${inputId}">ФИО сотрудника</label>
+          <div class="feeding-card__fields">
+            <input id="${inputId}" name="employeeName" type="text" maxlength="120" required autocomplete="name"${errorAttributes}>
+            <button type="submit">Отметить кормление</button>
+          </div>
+          ${errorMessage}
+        </form>
+      </section>`;
+}
+
+function renderPage(
+  walkDate,
+  walkSlots,
+  lastFeeding,
+  walkFormError = null,
+  pageMessage = null,
+  feedingFormError = null,
+) {
   const formattedDate = new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     month: 'long',
@@ -63,11 +114,12 @@ function renderPage(walkDate, walkSlots, formError = null, pageMessage = null) {
     timeZone: 'Europe/Moscow',
   }).format(new Date(`${walkDate}T12:00:00+03:00`));
   const slotItems = walkSlots
-    .map((walkSlot) => renderWalkSlot(walkSlot, formError))
+    .map((walkSlot) => renderWalkSlot(walkSlot, walkFormError))
     .join('\n          ');
   const pageMessageHtml = pageMessage
     ? `<p class="page-message" role="alert">${escapeHtml(pageMessage)}</p>`
     : '';
+  const feedingCard = renderFeedingCard(lastFeeding, feedingFormError);
 
   return `<!doctype html>
 <html lang="ru">
@@ -196,6 +248,63 @@ function renderPage(walkDate, walkSlots, formError = null, pageMessage = null) {
       .slot--booked .slot__status {
         background: #a7493d;
       }
+
+      .feeding-card {
+        margin-top: 28px;
+        padding: 18px;
+        border: 2px solid #8a704f;
+        border-radius: 12px;
+        background: #fffaf0;
+      }
+
+      .feeding-card h2,
+      .feeding-card__state,
+      .feeding-card__time {
+        margin-top: 0;
+      }
+
+      .feeding-card__form {
+        display: grid;
+        gap: 6px;
+      }
+
+      .feeding-card__label {
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      .feeding-card__fields {
+        display: flex;
+        gap: 8px;
+      }
+
+      .feeding-card__fields input {
+        box-sizing: border-box;
+        min-width: 0;
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #6c604f;
+        border-radius: 8px;
+        font: inherit;
+      }
+
+      .feeding-card__fields button {
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 8px;
+        color: #fff;
+        background: #725a3a;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .feeding-card__error {
+        margin: 0;
+        color: #8b241c;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
@@ -209,6 +318,7 @@ function renderPage(walkDate, walkSlots, formError = null, pageMessage = null) {
           ${slotItems}
         </ol>
       </section>
+      ${feedingCard}
     </main>
   </body>
 </html>`;
@@ -219,9 +329,26 @@ function sendText(response, statusCode, message) {
   response.end(message);
 }
 
-function sendPage(response, statusCode, walkSlots, formError = null, pageMessage = null) {
+function sendPage(
+  response,
+  statusCode,
+  walkSlots,
+  lastFeeding,
+  walkFormError = null,
+  pageMessage = null,
+  feedingFormError = null,
+) {
   response.writeHead(statusCode, { 'Content-Type': 'text/html; charset=utf-8' });
-  response.end(renderPage(currentDate, walkSlots, formError, pageMessage));
+  response.end(
+    renderPage(
+      currentDate,
+      walkSlots,
+      lastFeeding,
+      walkFormError,
+      pageMessage,
+      feedingFormError,
+    ),
+  );
 }
 
 async function readForm(request) {
@@ -242,8 +369,9 @@ async function readForm(request) {
 const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/') {
     const walkSlots = getWalkSlotsForDate(currentDate);
+    const lastFeeding = getLatestFeeding();
 
-    sendPage(response, 200, walkSlots);
+    sendPage(response, 200, walkSlots, lastFeeding);
     return;
   }
 
@@ -261,6 +389,7 @@ const server = http.createServer(async (request, response) => {
       const enteredEmployeeName = form.get('employeeName') ?? '';
       const employeeName = enteredEmployeeName.trim();
       const walkSlots = getWalkSlotsForDate(currentDate);
+      const lastFeeding = getLatestFeeding();
       const slotExists = walkSlots.some(({ slot_time: time }) => time === slotTime);
 
       if (!slotExists) {
@@ -269,21 +398,29 @@ const server = http.createServer(async (request, response) => {
       }
 
       if (!employeeName || employeeName.length > 120) {
-        sendPage(response, 400, walkSlots, {
-          employeeName: enteredEmployeeName,
-          message: 'Введите непустое ФИО',
-          slotTime,
-        });
+        sendPage(
+          response,
+          400,
+          walkSlots,
+          lastFeeding,
+          {
+            employeeName: enteredEmployeeName,
+            message: 'Введите непустое ФИО',
+            slotTime,
+          },
+        );
         return;
       }
 
       if (!bookWalkSlot(currentDate, slotTime, employeeName)) {
         const currentWalkSlots = getWalkSlotsForDate(currentDate);
+        const currentLastFeeding = getLatestFeeding();
 
         sendPage(
           response,
           409,
           currentWalkSlots,
+          currentLastFeeding,
           null,
           'Этот слот уже занят. Первоначальная запись сохранена.',
         );
@@ -301,6 +438,46 @@ const server = http.createServer(async (request, response) => {
 
       console.error(error);
       sendText(response, 500, 'Не удалось обработать запись');
+      return;
+    }
+  }
+
+  if (request.method === 'POST' && request.url === '/feedings') {
+    const contentType = request.headers['content-type'] ?? '';
+
+    if (!contentType.startsWith('application/x-www-form-urlencoded')) {
+      sendText(response, 415, 'Поддерживается только отправка формы');
+      return;
+    }
+
+    try {
+      const form = await readForm(request);
+      const enteredEmployeeName = form.get('employeeName') ?? '';
+      const employeeName = enteredEmployeeName.trim();
+
+      if (!employeeName || employeeName.length > 120) {
+        const walkSlots = getWalkSlotsForDate(currentDate);
+        const lastFeeding = getLatestFeeding();
+
+        sendPage(response, 400, walkSlots, lastFeeding, null, null, {
+          employeeName: enteredEmployeeName,
+          message: 'Введите непустое ФИО',
+        });
+        return;
+      }
+
+      addFeeding(employeeName);
+      response.writeHead(303, { Location: './' });
+      response.end();
+      return;
+    } catch (error) {
+      if (error.message === 'FORM_TOO_LARGE') {
+        sendText(response, 413, 'Данные формы слишком велики');
+        return;
+      }
+
+      console.error(error);
+      sendText(response, 500, 'Не удалось отметить кормление');
       return;
     }
   }

@@ -70,6 +70,16 @@ const bookFreeWalkSlot = database.prepare(`
     AND booked_by IS NULL
     AND booked_at IS NULL
 `);
+const insertFeeding = database.prepare(`
+  INSERT INTO feedings (employee_name, fed_at)
+  VALUES (?, ?)
+`);
+const selectLatestFeeding = database.prepare(`
+  SELECT id, employee_name, fed_at
+  FROM feedings
+  ORDER BY fed_at DESC, id DESC
+  LIMIT 1
+`);
 
 function getWalkSlotsForDate(walkDate) {
   return selectWalkSlotsByDate.all(walkDate);
@@ -86,10 +96,20 @@ function bookWalkSlot(walkDate, slotTime, employeeName) {
   return result.changes === 1;
 }
 
+function addFeeding(employeeName) {
+  insertFeeding.run(employeeName, new Date().toISOString());
+}
+
+function getLatestFeeding() {
+  return selectLatestFeeding.get() ?? null;
+}
+
 module.exports = {
+  addFeeding,
   bookWalkSlot,
   currentDate,
   database,
   databasePath,
+  getLatestFeeding,
   getWalkSlotsForDate,
 };

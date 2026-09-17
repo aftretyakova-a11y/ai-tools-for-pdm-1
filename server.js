@@ -305,6 +305,37 @@ function renderPage(
         font-size: 0.875rem;
         font-weight: 600;
       }
+
+      @media (max-width: 600px) {
+        main {
+          padding: 24px 12px;
+        }
+
+        .slot {
+          grid-template-columns: 1fr;
+          gap: 12px;
+          align-items: stretch;
+          padding: 14px;
+        }
+
+        .slot__fields,
+        .feeding-card__fields {
+          flex-direction: column;
+        }
+
+        .slot__fields button,
+        .feeding-card__fields button {
+          width: 100%;
+        }
+
+        .slot__status {
+          justify-self: start;
+        }
+
+        .feeding-card {
+          padding: 14px;
+        }
+      }
     </style>
   </head>
   <body>

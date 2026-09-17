@@ -62,12 +62,32 @@ const selectWalkSlotsByDate = database.prepare(`
   WHERE walk_date = ?
   ORDER BY slot_time
 `);
+const bookFreeWalkSlot = database.prepare(`
+  UPDATE walk_slots
+  SET booked_by = ?, booked_at = ?
+  WHERE walk_date = ?
+    AND slot_time = ?
+    AND booked_by IS NULL
+    AND booked_at IS NULL
+`);
 
 function getWalkSlotsForDate(walkDate) {
   return selectWalkSlotsByDate.all(walkDate);
 }
 
+function bookWalkSlot(walkDate, slotTime, employeeName) {
+  const result = bookFreeWalkSlot.run(
+    employeeName,
+    new Date().toISOString(),
+    walkDate,
+    slotTime,
+  );
+
+  return result.changes === 1;
+}
+
 module.exports = {
+  bookWalkSlot,
   currentDate,
   database,
   databasePath,

@@ -1,9 +1,10 @@
 const http = require('node:http');
 
-const { currentDate, getWalkSlotsForDate } = require('./database');
+const { bookWalkSlot, currentDate, getWalkSlotsForDate } = require('./database');
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const host = process.env.HOST ?? '127.0.0.1';
+const MAX_FORM_BYTES = 4096;
 
 function escapeHtml(value) {
   const characters = {
@@ -21,9 +22,18 @@ function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }) {
   const safeSlotTime = escapeHtml(slotTime);
 
   if (bookedBy === null) {
+    const inputId = `employee-name-${safeSlotTime.replace(':', '-')}`;
+
     return `<li class="slot slot--free">
             <time class="slot__time" datetime="${safeSlotTime}">${safeSlotTime}</time>
-            <p class="slot__details">Можно записаться</p>
+            <form class="slot__form" method="post" action="walks">
+              <input type="hidden" name="slotTime" value="${safeSlotTime}">
+              <label class="slot__label" for="${inputId}">ФИО сотрудника</label>
+              <div class="slot__fields">
+                <input id="${inputId}" name="employeeName" type="text" maxlength="120" required autocomplete="name">
+                <button type="submit">Записаться</button>
+              </div>
+            </form>
             <span class="slot__status">Свободен</span>
           </li>`;
   }
@@ -104,6 +114,42 @@ function renderPage(walkDate, walkSlots) {
         margin: 0;
       }
 
+      .slot__form {
+        display: grid;
+        gap: 6px;
+      }
+
+      .slot__label {
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      .slot__fields {
+        display: flex;
+        gap: 8px;
+      }
+
+      .slot__fields input {
+        box-sizing: border-box;
+        min-width: 0;
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #5f6c62;
+        border-radius: 8px;
+        font: inherit;
+      }
+
+      .slot__fields button {
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 8px;
+        color: #fff;
+        background: #24663e;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
       .slot__status {
         padding: 4px 10px;
         border-radius: 999px;
@@ -136,17 +182,76 @@ function renderPage(walkDate, walkSlots) {
 </html>`;
 }
 
-const server = http.createServer((request, response) => {
-  if (request.method !== 'GET' || request.url !== '/') {
-    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    response.end('Страница не найдена');
+function sendText(response, statusCode, message) {
+  response.writeHead(statusCode, { 'Content-Type': 'text/plain; charset=utf-8' });
+  response.end(message);
+}
+
+async function readForm(request) {
+  let body = '';
+  request.setEncoding('utf8');
+
+  for await (const chunk of request) {
+    body += chunk;
+
+    if (Buffer.byteLength(body) > MAX_FORM_BYTES) {
+      throw new Error('FORM_TOO_LARGE');
+    }
+  }
+
+  return new URLSearchParams(body);
+}
+
+const server = http.createServer(async (request, response) => {
+  if (request.method === 'GET' && request.url === '/') {
+    const walkSlots = getWalkSlotsForDate(currentDate);
+
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(renderPage(currentDate, walkSlots));
     return;
   }
 
-  const walkSlots = getWalkSlotsForDate(currentDate);
+  if (request.method === 'POST' && request.url === '/walks') {
+    const contentType = request.headers['content-type'] ?? '';
 
-  response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  response.end(renderPage(currentDate, walkSlots));
+    if (!contentType.startsWith('application/x-www-form-urlencoded')) {
+      sendText(response, 415, 'Поддерживается только отправка формы');
+      return;
+    }
+
+    try {
+      const form = await readForm(request);
+      const slotTime = form.get('slotTime') ?? '';
+      const employeeName = (form.get('employeeName') ?? '').trim();
+      const walkSlots = getWalkSlotsForDate(currentDate);
+      const slotExists = walkSlots.some(({ slot_time: time }) => time === slotTime);
+
+      if (!employeeName || employeeName.length > 120 || !slotExists) {
+        sendText(response, 400, 'Укажите непустое ФИО и выберите доступный слот');
+        return;
+      }
+
+      if (!bookWalkSlot(currentDate, slotTime, employeeName)) {
+        sendText(response, 409, 'Не удалось записаться в выбранный слот');
+        return;
+      }
+
+      response.writeHead(303, { Location: './' });
+      response.end();
+      return;
+    } catch (error) {
+      if (error.message === 'FORM_TOO_LARGE') {
+        sendText(response, 413, 'Данные формы слишком велики');
+        return;
+      }
+
+      console.error(error);
+      sendText(response, 500, 'Не удалось обработать запись');
+      return;
+    }
+  }
+
+  sendText(response, 404, 'Страница не найдена');
 });
 
 server.listen(port, host, () => {

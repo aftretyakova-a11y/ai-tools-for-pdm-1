@@ -55,7 +55,7 @@ function renderWalkSlot({ slot_time: slotTime, booked_by: bookedBy }, formError)
           </li>`;
 }
 
-function renderPage(walkDate, walkSlots, formError = null) {
+function renderPage(walkDate, walkSlots, formError = null, pageMessage = null) {
   const formattedDate = new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     month: 'long',
@@ -65,6 +65,9 @@ function renderPage(walkDate, walkSlots, formError = null) {
   const slotItems = walkSlots
     .map((walkSlot) => renderWalkSlot(walkSlot, formError))
     .join('\n          ');
+  const pageMessageHtml = pageMessage
+    ? `<p class="page-message" role="alert">${escapeHtml(pageMessage)}</p>`
+    : '';
 
   return `<!doctype html>
 <html lang="ru">
@@ -169,6 +172,15 @@ function renderPage(walkDate, walkSlots, formError = null) {
         font-weight: 600;
       }
 
+      .page-message {
+        padding: 12px 14px;
+        border: 2px solid #a7493d;
+        border-radius: 10px;
+        color: #742d25;
+        background: #fff0ed;
+        font-weight: 700;
+      }
+
       .slot__status {
         padding: 4px 10px;
         border-radius: 999px;
@@ -190,6 +202,7 @@ function renderPage(walkDate, walkSlots, formError = null) {
     <main>
       <h1>Кто выгуливает Бориса</h1>
       <p>Сегодня: <time datetime="${walkDate}">${formattedDate}</time></p>
+      ${pageMessageHtml}
       <section aria-labelledby="walk-slots-title">
         <h2 id="walk-slots-title">Слоты прогулок</h2>
         <ol class="slots">
@@ -206,9 +219,9 @@ function sendText(response, statusCode, message) {
   response.end(message);
 }
 
-function sendPage(response, statusCode, walkSlots, formError = null) {
+function sendPage(response, statusCode, walkSlots, formError = null, pageMessage = null) {
   response.writeHead(statusCode, { 'Content-Type': 'text/html; charset=utf-8' });
-  response.end(renderPage(currentDate, walkSlots, formError));
+  response.end(renderPage(currentDate, walkSlots, formError, pageMessage));
 }
 
 async function readForm(request) {
@@ -265,7 +278,15 @@ const server = http.createServer(async (request, response) => {
       }
 
       if (!bookWalkSlot(currentDate, slotTime, employeeName)) {
-        sendText(response, 409, 'Не удалось записаться в выбранный слот');
+        const currentWalkSlots = getWalkSlotsForDate(currentDate);
+
+        sendPage(
+          response,
+          409,
+          currentWalkSlots,
+          null,
+          'Этот слот уже занят. Первоначальная запись сохранена.',
+        );
         return;
       }
 

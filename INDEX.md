@@ -5,6 +5,7 @@
 3. [Архитектура](docs/ARCHITECTURE.md)
 4. [Операции](docs/OPERATIONS.md)
 5. [Материалы](docs/MATERIALS.md)
+6. [Публичный доступ](docs/tasks/001-public-access.md)
 
 Добавляйте ADR, task artifacts и тематические индексы по мере роста проекта, а не
 заранее.

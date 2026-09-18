@@ -10,19 +10,17 @@
 
 ## Развёртывание и rollback
 
-До публикации опишите exact deploy, migrations, smoke test и rollback. Default
-prototype deploy выполняется из `/srv/vibe/system` командой
+Prototype deploy выполняется из `/srv/vibe/system` командой
 `scripts/publishctl publish sprint-1` и открывается на
-`https://vibe-apps.aikibox.ru/sprint-1/` после общей авторизации.
+`https://vibe-apps.aikibox.ru/sprint-1/` без авторизации.
 Внешний cloud hosting не используйте без отдельного явного запроса пользователя.
 Путь на основном `aikibox.ru` оформляйте через `scripts/requestctl`.
 
-Не используйте unauthenticated `curl`, `wget` или browser smoke внешнего URL как
-routine health check. Vibe VDS не имеет MAIN audience session, поэтому `401`
-либо timeout на auth/ingress path ожидаем и не свидетельствует о сбое проекта.
-Проверяйте публикацию через `scripts/publishctl status`, внутренний health check
-publisher и `scripts/publishctl logs sprint-1`; внешний пользовательский
-сценарий — только в уже авторизованной browser-сессии.
+Проверяйте runtime через `scripts/publishctl status`, внутренний health check
+publisher и `scripts/publishctl logs sprint-1`. MAIN-side acceptance должна
+подтверждать внешний `200` без cookies для `/sprint-1/`, а также `401` для корня
+origin и соседнего `/sprint-1-other/`. Vibe VDS не использует MAIN browser
+session и не управляет ingress allowlist.
 
 ## Диагностика и recovery
 

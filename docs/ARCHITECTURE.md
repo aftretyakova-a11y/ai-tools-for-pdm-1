@@ -17,14 +17,14 @@ ignored `materials/` внутри project root согласно
 
 ## Публикация и shared infrastructure
 
-По умолчанию проект не опубликован. Штатный prototype URL после явного запроса
-пользователя — `https://vibe-apps.aikibox.ru/sprint-1/` с общей
-авторизацией. Внешний cloud hosting не является default. Любой путь на основном
-`aikibox.ru` или другое изменение shared infrastructure проходит через
-структурированный административный запрос и синхронное обновление реестра.
-Внешний browser URL не является техническим health endpoint для клиентов без
-MAIN audience session; нормативный путь проверки описан в
-[`OPERATIONS.md`](OPERATIONS.md).
+Текущий prototype опубликован на
+`https://vibe-apps.aikibox.ru/sprint-1/` без авторизации по явному решению
+владельца. Анонимное исключение ограничено exact prefix `/sprint-1/` в
+MAIN-side gateway; корень origin и соседние Vibe-приложения сохраняют SSO.
+Внешний cloud hosting не используется. Любой путь на основном `aikibox.ru` или
+другое изменение shared infrastructure проходит через структурированный
+административный запрос и синхронное обновление реестра. Нормативный путь
+проверки описан в [`OPERATIONS.md`](OPERATIONS.md).
 
 ## Секреты, backup и recovery
 
